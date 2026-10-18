@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+*.env
+cdp_api_key.json
+.pytest_cache/
