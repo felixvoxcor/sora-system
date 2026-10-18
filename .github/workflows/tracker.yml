@@ -1,12 +1,15 @@
 name: nba-clv-tracker
 on:
   schedule:
-    - cron: "7 * * * *"      # cada hora; el rastreador decide si hay ventana E/D abierta
+    # Dos corridas por hora durante las horas en que ocurren las ventanas E/D (UTC), para que un retraso del
+    # cron de GitHub no pierda el partido. Mas una corrida diaria de liquidacion (resultados/cierres).
+    - cron: "7,37 13-23,0-4 * * *"
+    - cron: "17 9 * * *"
   workflow_dispatch: {}
 permissions:
   contents: write
 concurrency:
-  group: tracker
+  group: tracker                 # nunca dos corridas a la vez (evita escrituras simultaneas sobre lab.db)
   cancel-in-progress: false
 jobs:
   run:
@@ -19,11 +22,25 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python -m pytest -q
+      - name: Tests (no bloquean la captura de datos)
+        id: tests
+        continue-on-error: true
+        run: python -m pytest -q
       - run: python -m lab.tracker run
       - name: Guardar datos
         run: |
           git config user.name "nba-clv-bot"
           git config user.email "nba-clv-bot@users.noreply.github.com"
-          git add data/lab.db REPORT.md
-          git diff --cached --quiet || (git commit -m "datos: $(date -u +%Y-%m-%dT%H:%MZ)" && git push)
+          git add data/lab.db data/raw REPORT.md
+          if ! git diff --cached --quiet; then
+            git commit -m "datos: $(date -u +%Y-%m-%dT%H:%MZ)"
+            for i in 1 2 3; do
+              git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push && break
+              sleep $((i * 5))
+            done
+          fi
+      - name: Fallar visiblemente si los tests fallaron
+        if: steps.tests.outcome == 'failure'
+        run: |
+          echo "::error::pytest fallo; los datos se guardaron igual, pero hay que revisar el codigo"
+          exit 1

@@ -98,13 +98,22 @@ def parse_odds(payload, kind, prefer_provider=None):
         away_px=_american(((ao.get(kind) or {}).get("spread")) or {}))
 
 
+def odds_payload(event_id):
+    """Respuesta cruda de ESPN para las cuotas de un partido (se archiva con su hash)."""
+    return get(ODDS.format(e=event_id))
+
+
 def odds(event_id, kind, prefer_provider=None):
-    return parse_odds(get(ODDS.format(e=event_id)), kind, prefer_provider)
+    return parse_odds(odds_payload(event_id), kind, prefer_provider)
 
 
-def injuries():
+def injuries_payload():
+    return get(INJ)
+
+
+def injuries(payload=None):
     """Lista de (team_abbr, player_id, name, status)."""
-    j = get(INJ) or {}
+    j = (payload if payload is not None else get(INJ)) or {}
     out = []
     for t in j.get("injuries", []):
         team = TEAM_ABBR.get(t.get("displayName"))

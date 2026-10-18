@@ -14,7 +14,13 @@ CREATE TABLE IF NOT EXISTS snapshots(
   event_id TEXT, label TEXT, taken_at TEXT, tip_ts TEXT, home TEXT, away TEXT,
   provider_id TEXT, line REAL, home_px REAL, away_px REAL, open_line REAL, total REAL,
   pred_a REAL, pred_b REAL, inj_adj REAL, model_version TEXT, injuries_json TEXT,
+  raw_sha256 TEXT, inj_sha256 TEXT,
   UNIQUE(event_id, label));
+CREATE TABLE IF NOT EXISTS games_seen(
+  event_id TEXT PRIMARY KEY, tip_ts TEXT, home TEXT, away TEXT, first_seen TEXT);
+CREATE TABLE IF NOT EXISTS capture_log(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT, label TEXT, attempted_at TEXT, tte_hours REAL, status TEXT);
 CREATE TABLE IF NOT EXISTS closes(
   event_id TEXT PRIMARY KEY, provider_id TEXT, close_line REAL,
   home_px REAL, away_px REAL, fetched_at TEXT);
@@ -34,4 +40,8 @@ def connect(path=None):
     con = sqlite3.connect(p)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(snapshots)")}
+    for c in ("raw_sha256", "inj_sha256"):          # migracion de bases creadas con v1.0
+        if c not in cols:
+            con.execute(f"ALTER TABLE snapshots ADD COLUMN {c} TEXT")
     return con
