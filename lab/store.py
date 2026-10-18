@@ -27,6 +27,13 @@ CREATE TABLE IF NOT EXISTS closes(
 CREATE TABLE IF NOT EXISTS minutes(
   event_id TEXT, player_id TEXT, team TEXT, day_et TEXT, minutes REAL, pm REAL,
   PRIMARY KEY(event_id, player_id));
+CREATE TABLE IF NOT EXISTS line_path(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT, taken_at TEXT, tte_hours REAL, provider_id TEXT,
+  line REAL, home_px REAL, away_px REAL, total REAL);
+CREATE TABLE IF NOT EXISTS injury_log(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  taken_at TEXT, team TEXT, player_id TEXT, name TEXT, status TEXT);
 CREATE TRIGGER IF NOT EXISTS snapshots_no_update BEFORE UPDATE ON snapshots
   BEGIN SELECT RAISE(ABORT, 'snapshots es append-only'); END;
 CREATE TRIGGER IF NOT EXISTS snapshots_no_delete BEFORE DELETE ON snapshots

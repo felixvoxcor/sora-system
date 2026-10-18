@@ -116,7 +116,7 @@ def test_ci_and_mde():
                          inj_adj=0.0, close_line=1.0 if i % 2 else 0.0, margin=5))
     s = report.arm_stats(rows, "A", 2.0)
     assert s["n"] == 40 and s["lo"] < s["clv"] < s["hi"] and s["ub"] > s["clv"]
-    assert report.mde(2.0) == pytest.approx(2.8016 * 2.0 / np.sqrt(500), rel=1e-3)
+    assert report.mde(2.0) == pytest.approx(2.9696 * 2.0 / np.sqrt(500), rel=1e-3)
 
 
 def test_snapshot_insert_or_ignore_is_safe(con):
@@ -194,7 +194,7 @@ def test_snapshot_end_to_end_offline(con, tmp_path, monkeypatch):
     tracker.snapshot(con)
     tracker.snapshot(con)                                   # segunda corrida: no duplica
     rows = con.execute("SELECT label, raw_sha256, inj_sha256, model_version FROM snapshots").fetchall()
-    assert len(rows) == 1 and rows[0]["label"] == "D" and rows[0]["model_version"] == "v1.1"
+    assert len(rows) == 1 and rows[0]["label"] == "D" and rows[0]["model_version"] == "v1.2"
     assert rows[0]["raw_sha256"] == rawstore.sha256(payload)
     assert (tmp_path / "raw" / "999_D_odds.json.gz").exists()
     assert con.execute("SELECT status FROM capture_log").fetchone()[0] == "ok"
@@ -215,3 +215,63 @@ def test_snapshot_logs_missing_odds(con, tmp_path, monkeypatch):
     tracker.snapshot(con)
     assert con.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 0
     assert con.execute("SELECT status FROM capture_log").fetchone()[0] == "no_odds"
+
+
+def test_alpha_is_bonferroni_over_three_arms():
+    assert report.ALPHA == pytest.approx(0.05 / 3)
+    assert [a[0] for a in report.ARMS] == ["A", "B", "C"] and report.ARMS[2][1:] == ("A", "E")
+
+
+def _seed_label(con, label, i, line, close, margin, pa):
+    eid = str(i)
+    con.execute("INSERT INTO snapshots(event_id,label,line,home_px,away_px,pred_a,pred_b,inj_adj) "
+                "VALUES (?,?,?,?,?,?,?,?)", (eid, label, line, -110, -110, pa, pa, 0.0))
+    con.execute("INSERT OR IGNORE INTO closes VALUES (?,?,?,?,?,?)", (eid, "58", close, -110, -110, ""))
+    con.execute("INSERT OR IGNORE INTO results VALUES (?,?,?,?,?,?,?,?)", (eid, "", "", 2026, "H", "A", 100 + margin, 100))
+
+
+def test_arm_c_reads_only_label_e(con):
+    _seed_label(con, "E", 1, 1.0, 3.0, 5, 4.0)          # E: CLV +2
+    _seed_label(con, "E", 3, 1.0, 3.5, 5, 4.0)          # E: CLV +2.5
+    _seed_label(con, "D", 2, 1.0, 1.0, 5, 4.0)          # D: CLV 0 (no debe entrar al brazo C)
+    _seed_label(con, "D", 4, 1.0, 0.0, 5, 4.0)          # CLV -1
+    e, d = report.load(con, "E"), report.load(con, "D")
+    assert len(e) == 2 and len(d) == 2
+    assert report.arm_stats(e, "A", 2.0)["clv"] == pytest.approx(2.25)
+    assert report.arm_stats(d, "A", 2.0)["clv"] == pytest.approx(-0.5)
+
+
+def test_render_has_three_arms(con):
+    _seed_label(con, "E", 1, 1.0, 3.0, 5, 4.0)
+    txt = report.render(con)
+    assert "Brazo C (A@E)" in txt and "Brazo A (A@D)" in txt and "Brazo B (B@D)" in txt
+
+
+def test_line_path_and_injury_log_end_to_end(con, tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from lab import tracker
+    now = datetime(2026, 10, 21, 18, 0, tzinfo=timezone.utc)
+    payload = json.load(open(FX / "odds_pre.json"))
+    game = dict(event_id="777", ts=(now + timedelta(hours=10)).isoformat().replace("+00:00", "Z"), season_type=2,
+                home="DET", away="NY", completed=False, home_score=0, away_score=0)
+    state = {"inj": [{"displayName": "New York Knicks", "injuries": [
+        {"status": "Out", "athlete": {"displayName": "Star", "links": [{"rel": ["athlete"], "href": "x/id/123/star"}]}}]}]}
+    monkeypatch.setattr(tracker, "now_utc", lambda: now)
+    monkeypatch.setattr(tracker.espn, "scoreboard", lambda d: [game] if d == "20261021" else [])
+    monkeypatch.setattr(tracker.espn, "odds_payload", lambda e: payload)
+    monkeypatch.setattr(tracker.espn, "injuries_payload", lambda: {"injuries": state["inj"]})
+    monkeypatch.setattr(rawstore, "RAW_DIR", tmp_path / "raw")
+    tracker.snapshot(con)
+    # 10 h antes del tip: no hay snapshot (fuera de E/D) pero SI un punto de trayectoria y un registro de lesion
+    assert con.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM line_path").fetchone()[0] == 1
+    assert con.execute("SELECT status FROM injury_log").fetchall()[0][0] == "Out"
+    tracker.snapshot(con)                                    # mismo estado: la lesion no se vuelve a registrar
+    assert con.execute("SELECT COUNT(*) FROM injury_log").fetchone()[0] == 1
+    assert con.execute("SELECT COUNT(*) FROM line_path").fetchone()[0] == 2
+    state["inj"][0]["injuries"][0]["status"] = "Day-To-Day"   # cambio de estado: se registra
+    tracker.snapshot(con)
+    assert [r[0] for r in con.execute("SELECT status FROM injury_log ORDER BY id")] == ["Out", "Day-To-Day"]
+    state["inj"] = []                                         # API vacia (fallo): no inventa remociones
+    tracker.snapshot(con)
+    assert con.execute("SELECT COUNT(*) FROM injury_log").fetchone()[0] == 2

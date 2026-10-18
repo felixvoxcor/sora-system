@@ -4,6 +4,7 @@ on:
     # Dos corridas por hora durante las horas en que ocurren las ventanas E/D (UTC), para que un retraso del
     # cron de GitHub no pierda el partido. Mas una corrida diaria de liquidacion (resultados/cierres).
     - cron: "7,37 13-23,0-4 * * *"
+    - cron: "7 5-12 * * *"          # una corrida por hora fuera de horario: completa la trayectoria de la linea (24 h)
     - cron: "17 9 * * *"
   workflow_dispatch: {}
 permissions:
