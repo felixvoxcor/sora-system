@@ -17,7 +17,7 @@ validaron contra líneas reales.
 | `lab/store.py` | SQLite **append-only**: los snapshots no se pueden editar ni borrar. |
 | `lab/report.py` | CLV medio, t, p, win%, ROI en papel y veredicto pre-registrado → `REPORT.md`. |
 
-Snapshots: **E** (~24 h antes del tip, exploratorio) y **D** (entre 3 h y 45 min antes, el único que cuenta).
+Snapshots: **E** (~24 h antes del tip, exploratorio), **D** (1-2 h antes, el único que cuenta) y **DX** (30-60 min, respaldo exploratorio). Cada captura archiva la respuesta cruda de ESPN en `data/raw/` con su SHA-256.
 
 ## Uso local
 ```bash
@@ -29,9 +29,9 @@ Fuente de datos: APIs públicas de ESPN (sin API key). Datos históricos en `dat
 `lab/fetch_history.py` baja temporadas con líneas open/close para re-hacer el backtest.
 
 ## Ejecución automática
-`.github/workflows/tracker.yml` corre cada hora, ejecuta los tests, actualiza `data/lab.db` y `REPORT.md`
+`.github/workflows/tracker.yml` corre dos veces por hora en horas de partido (más una liquidación diaria), ejecuta los tests (sin bloquear la captura), actualiza `data/lab.db` y `REPORT.md`
 y hace commit. **Los workflows programados solo corren desde la rama por defecto**: hay que fusionar esta
-rama a `main` para activarlo. Costo: ~1 min por corrida (≈720 min/mes, dentro del plan gratuito privado).
+rama a `main` para activarlo. Costo estimado: ~1 min por corrida, ≈1.000 min/mes (el plan gratuito privado da 2.000).
 
 ## Limitaciones conocidas
 - ESPN no publica lesiones históricas: la capa B **no tiene backtest**; solo se valida en vivo.

@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from . import MODEL_VERSION, NON_NBA, espn, injury, ratings, report, store
+from . import MODEL_VERSION, NON_NBA, espn, injury, ratings, rawstore, report, store
 
 ROOT = Path(__file__).resolve().parent.parent
 HISTORY = ROOT / "data" / "history.csv"
@@ -55,17 +55,17 @@ def settle(con, days_back=4):
             eid, dte = g["event_id"], day_et(g["ts"])
             if g["completed"]:
                 if not con.execute("SELECT 1 FROM results WHERE event_id=?", (eid,)).fetchone():
-                    con.execute("INSERT INTO results VALUES (?,?,?,?,?,?,?,?)",
+                    con.execute("INSERT OR IGNORE INTO results VALUES (?,?,?,?,?,?,?,?)",
                                 (eid, g["ts"], dte, ratings.season_of(dte), g["home"], g["away"],
                                  g["home_score"], g["away_score"]))
                     _store_minutes(con, eid, dte, espn.boxscore_minutes(eid))
                     n_res += 1
-                snap = con.execute("SELECT provider_id FROM snapshots WHERE event_id=? LIMIT 1",
+                snap = con.execute("SELECT provider_id FROM snapshots WHERE event_id=? ORDER BY (label='D') DESC LIMIT 1",
                                    (eid,)).fetchone()
                 if snap and not con.execute("SELECT 1 FROM closes WHERE event_id=?", (eid,)).fetchone():
                     o = espn.odds(eid, "close", prefer_provider=snap["provider_id"])
                     if o:
-                        con.execute("INSERT INTO closes VALUES (?,?,?,?,?,?)",
+                        con.execute("INSERT OR IGNORE INTO closes VALUES (?,?,?,?,?,?)",
                                     (eid, o["provider_id"], o["line"], o["home_px"], o["away_px"],
                                      now_utc().isoformat()))
                         n_close += 1
@@ -74,19 +74,27 @@ def settle(con, days_back=4):
 
 
 def label_for(tte_h):
+    """E = exploratoria (~24h). D = unica ventana confirmatoria (1-2h antes del tip).
+    DX = respaldo (30-60 min antes) solo si D fallo; se guarda pero NO entra al veredicto."""
     if 20 <= tte_h <= 26:
         return "E"
-    if 0.75 <= tte_h <= 3:
+    if 1.0 <= tte_h <= 2.0:
         return "D"
+    if 0.5 <= tte_h < 1.0:
+        return "DX"
     return None
 
 
 def snapshot(con):
-    """Registra prediccion + linea actual para partidos en la ventana E (24h) o D (decision)."""
+    """Registra prediccion + linea actual para partidos en la ventana E (24h), D (1-2h) o DX (respaldo).
+    Archiva la respuesta cruda de ESPN (hash en la fila) y registra cada intento en capture_log."""
     R = ratings.build(HISTORY, con)
     mins = injury.avg_minutes(con)
-    inj = espn.injuries()
+    inj_payload = espn.injuries_payload()
+    inj = espn.injuries(inj_payload)
     t0, n_new = now_utc(), 0
+    stamp = t0.strftime("%Y%m%dT%H%M")
+    inj_sha = None
     for off in (0, 1, 2):
         day = (t0.astimezone(ET).date() + timedelta(days=off)).strftime("%Y%m%d")
         for g in espn.scoreboard(day):
@@ -94,24 +102,37 @@ def snapshot(con):
                 continue
             if g["home"] in NON_NBA or g["away"] in NON_NBA:
                 continue
+            con.execute("INSERT OR IGNORE INTO games_seen VALUES (?,?,?,?,?)",
+                        (g["event_id"], g["ts"], g["home"], g["away"], t0.isoformat()))
             tte = (parse_ts(g["ts"]) - t0).total_seconds() / 3600
             lab = label_for(tte)
             if not lab or con.execute("SELECT 1 FROM snapshots WHERE event_id=? AND label=?",
                                       (g["event_id"], lab)).fetchone():
                 continue
-            o = espn.odds(g["event_id"], "current")
-            if not o:
+            if lab == "DX" and con.execute("SELECT 1 FROM snapshots WHERE event_id=? AND label='D'",
+                                           (g["event_id"],)).fetchone():
                 continue
+            payload = espn.odds_payload(g["event_id"])
+            o = espn.parse_odds(payload, "current")
+            if not o:
+                con.execute("INSERT INTO capture_log(event_id,label,attempted_at,tte_hours,status) "
+                            "VALUES (?,?,?,?,?)", (g["event_id"], lab, t0.isoformat(), tte, "no_odds"))
+                continue
+            raw_sha = rawstore.save(f"{g['event_id']}_{lab}_odds", payload)
+            if inj_sha is None:
+                inj_sha = rawstore.save(f"inj_{stamp}", inj_payload)
             pa = R.predict(g["home"], g["away"])
             adj, detail = injury.adjustment(g["home"], g["away"], inj, mins)
-            con.execute(
-                "INSERT INTO snapshots(event_id,label,taken_at,tip_ts,home,away,provider_id,line,"
-                "home_px,away_px,open_line,total,pred_a,pred_b,inj_adj,model_version,injuries_json)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            cur = con.execute(
+                "INSERT OR IGNORE INTO snapshots(event_id,label,taken_at,tip_ts,home,away,provider_id,line,"
+                "home_px,away_px,open_line,total,pred_a,pred_b,inj_adj,model_version,injuries_json,"
+                "raw_sha256,inj_sha256) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (g["event_id"], lab, t0.isoformat(), g["ts"], g["home"], g["away"], o["provider_id"],
                  o["line"], o["home_px"], o["away_px"], o["open_line"], o["total"], pa, pa + adj,
-                 adj, MODEL_VERSION, detail))
-            n_new += 1
+                 adj, MODEL_VERSION, detail, raw_sha, inj_sha))
+            con.execute("INSERT INTO capture_log(event_id,label,attempted_at,tte_hours,status) "
+                        "VALUES (?,?,?,?,?)", (g["event_id"], lab, t0.isoformat(), tte, "ok"))
+            n_new += cur.rowcount
             print(f"  [{lab}] {g['away']}@{g['home']} linea={o['line']:+.1f} A={pa:+.1f} B={pa+adj:+.1f}")
     con.commit()
     print(f"snapshot: {n_new} nuevos")

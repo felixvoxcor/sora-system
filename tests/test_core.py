@@ -2,7 +2,7 @@ import json, sqlite3
 from pathlib import Path
 import numpy as np
 import pytest
-from lab import espn, injury, ratings, report, store
+from lab import espn, injury, ratings, rawstore, report, store
 from lab.tracker import label_for
 
 FX = Path(__file__).parent / "fixtures"
@@ -63,7 +63,9 @@ def test_unique_snapshot_per_label(con):
 
 
 def test_label_windows():
-    assert label_for(24) == "E" and label_for(2) == "D" and label_for(0.5) is None
+    assert label_for(24) == "E" and label_for(1.5) == "D" and label_for(1.0) == "D" and label_for(2.0) == "D"
+    assert label_for(0.75) == "DX" and label_for(0.5) == "DX"          # respaldo, fuera del veredicto
+    assert label_for(0.4) is None and label_for(2.5) is None and label_for(3.0) is None
     assert label_for(10) is None and label_for(30) is None
 
 
@@ -95,12 +97,121 @@ def test_clv_sign_convention(con):
 
 
 def test_verdicts():
-    assert report.verdict(dict(n=300, clv=0.2, p=0.01)) == "PASA"
-    assert report.verdict(dict(n=300, clv=0.2, p=0.20)).startswith("ARCHIVAR")
-    assert report.verdict(dict(n=300, clv=-0.1, p=0.9)).startswith("ARCHIVAR")
-    assert report.verdict(dict(n=150, clv=-0.2, p=0.9)) == "ARCHIVAR (futilidad)"
-    assert report.verdict(dict(n=100, clv=-0.5, p=0.9)).startswith("EN CURSO")
+    ok = dict(n=500, clv=0.2, p=0.01, ub=0.4)
+    assert report.verdict(ok) == "PASA"
+    assert report.verdict(dict(ok, p=0.20)).startswith("ARCHIVAR")
+    assert report.verdict(dict(ok, clv=-0.1, p=0.9)).startswith("ARCHIVAR")
+    assert report.verdict(ok, coverage_ok=False).startswith("INVALIDO")
+    # futilidad solo en el interim y por limite superior del IC
+    assert report.verdict(dict(n=250, clv=-0.3, p=0.99, ub=0.0)) == "ARCHIVAR (futilidad)"
+    assert report.verdict(dict(n=250, clv=-0.1, p=0.9, ub=0.2)).startswith("EN CURSO")
+    # nunca se declara exito antes de N_DECIDE
+    assert report.verdict(dict(n=499, clv=1.0, p=0.0001, ub=2.0)).startswith("EN CURSO")
+
+
+def test_ci_and_mde():
+    rows = []
+    for i in range(40):
+        rows.append(dict(event_id=str(i), line=0.0, home_px=-110, away_px=-110, pred_a=3.0, pred_b=3.0,
+                         inj_adj=0.0, close_line=1.0 if i % 2 else 0.0, margin=5))
+    s = report.arm_stats(rows, "A", 2.0)
+    assert s["n"] == 40 and s["lo"] < s["clv"] < s["hi"] and s["ub"] > s["clv"]
+    assert report.mde(2.0) == pytest.approx(2.8016 * 2.0 / np.sqrt(500), rel=1e-3)
+
+
+def test_snapshot_insert_or_ignore_is_safe(con):
+    con.execute("INSERT OR IGNORE INTO snapshots(event_id,label) VALUES ('1','D')")
+    cur = con.execute("INSERT OR IGNORE INTO snapshots(event_id,label) VALUES ('1','D')")
+    assert cur.rowcount == 0 and con.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 1
+
+
+def test_schema_migration_adds_hash_columns(tmp_path):
+    import sqlite3 as sq
+    p = tmp_path / "old.db"
+    old = sq.connect(p)
+    old.executescript("CREATE TABLE snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT, label TEXT,"
+                      " UNIQUE(event_id,label));")
+    old.commit(); old.close()
+    con = store.connect(p)
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(snapshots)")}
+    assert {"raw_sha256", "inj_sha256"} <= cols
+
+
+def test_rawstore_deterministic_and_append_only(tmp_path):
+    a = {"b": 1, "a": [1, 2]}
+    h1 = rawstore.save("x", a, root=tmp_path)
+    b1 = (tmp_path / "x.json.gz").read_bytes()
+    h2 = rawstore.save("x", {"a": [1, 2], "b": 1}, root=tmp_path)       # mismo contenido, otro orden de claves
+    assert h1 == h2 == rawstore.sha256(a) and (tmp_path / "x.json.gz").read_bytes() == b1
+    rawstore.save("x", {"cambiado": True}, root=tmp_path)               # no sobreescribe
+    assert (tmp_path / "x.json.gz").read_bytes() == b1
+    assert rawstore.save("y", None, root=tmp_path) is None
+
+
+def test_coverage_counts(con):
+    for i, (d, dx, noodds) in enumerate([(1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 0, 0)]):
+        eid = str(i)
+        con.execute("INSERT INTO games_seen VALUES (?,?,?,?,?)", (eid, "", "H", "A", ""))
+        con.execute("INSERT INTO results VALUES (?,?,?,?,?,?,?,?)", (eid, "", "", 2026, "H", "A", 100, 90))
+        if d:
+            con.execute("INSERT INTO snapshots(event_id,label) VALUES (?,?)", (eid, "D"))
+        if dx:
+            con.execute("INSERT INTO snapshots(event_id,label) VALUES (?,?)", (eid, "DX"))
+        if noodds:
+            con.execute("INSERT INTO capture_log(event_id,label,attempted_at,tte_hours,status) "
+                        "VALUES (?,?,?,?,?)", (eid, "D", "", 1.5, "no_odds"))
+    c = report.coverage(con)
+    assert (c["n"], c["d"], c["dx"], c["no_odds"], c["missed"]) == (4, 1, 1, 1, 1)
+    assert c["frac"] == 0.25
+
+
+def test_dx_never_enters_verdict(con):
+    con.execute("INSERT INTO snapshots(event_id,label,line,home_px,away_px,pred_a,pred_b,inj_adj) "
+                "VALUES ('1','DX',1,-110,-110,5,5,0)")
+    con.execute("INSERT INTO closes VALUES ('1','58',3.0,-110,-110,'')")
+    con.execute("INSERT INTO results VALUES ('1','','',2026,'H','A',110,100)")
+    assert report.load(con) == []
 
 
 def test_empty_report(con):
     assert "Aun no hay partidos" in report.render(con)
+
+
+def test_snapshot_end_to_end_offline(con, tmp_path, monkeypatch):
+    """Simula un partido a 1.5 h del tip: debe crear snapshot D, archivar el crudo con hash y registrar el intento."""
+    from datetime import datetime, timedelta, timezone
+    from lab import tracker
+    now = datetime(2026, 10, 21, 22, 0, tzinfo=timezone.utc)
+    tip = now + timedelta(hours=1.5)
+    payload = json.load(open(FX / "odds_pre.json"))
+    game = dict(event_id="999", ts=tip.isoformat().replace("+00:00", "Z"), season_type=2, home="DET",
+                away="NY", completed=False, home_score=0, away_score=0)
+    monkeypatch.setattr(tracker, "now_utc", lambda: now)
+    monkeypatch.setattr(tracker.espn, "scoreboard", lambda d: [game] if d == "20261021" else [])
+    monkeypatch.setattr(tracker.espn, "odds_payload", lambda e: payload)
+    monkeypatch.setattr(tracker.espn, "injuries_payload", lambda: {"injuries": []})
+    monkeypatch.setattr(rawstore, "RAW_DIR", tmp_path / "raw")
+    tracker.snapshot(con)
+    tracker.snapshot(con)                                   # segunda corrida: no duplica
+    rows = con.execute("SELECT label, raw_sha256, inj_sha256, model_version FROM snapshots").fetchall()
+    assert len(rows) == 1 and rows[0]["label"] == "D" and rows[0]["model_version"] == "v1.1"
+    assert rows[0]["raw_sha256"] == rawstore.sha256(payload)
+    assert (tmp_path / "raw" / "999_D_odds.json.gz").exists()
+    assert con.execute("SELECT status FROM capture_log").fetchone()[0] == "ok"
+    assert con.execute("SELECT COUNT(*) FROM games_seen").fetchone()[0] == 1
+
+
+def test_snapshot_logs_missing_odds(con, tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from lab import tracker
+    now = datetime(2026, 10, 21, 22, 0, tzinfo=timezone.utc)
+    game = dict(event_id="998", ts=(now + timedelta(hours=1.5)).isoformat().replace("+00:00", "Z"),
+                season_type=2, home="DET", away="NY", completed=False, home_score=0, away_score=0)
+    monkeypatch.setattr(tracker, "now_utc", lambda: now)
+    monkeypatch.setattr(tracker.espn, "scoreboard", lambda d: [game] if d == "20261021" else [])
+    monkeypatch.setattr(tracker.espn, "odds_payload", lambda e: {"items": []})
+    monkeypatch.setattr(tracker.espn, "injuries_payload", lambda: {"injuries": []})
+    monkeypatch.setattr(rawstore, "RAW_DIR", tmp_path / "raw")
+    tracker.snapshot(con)
+    assert con.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 0
+    assert con.execute("SELECT status FROM capture_log").fetchone()[0] == "no_odds"
