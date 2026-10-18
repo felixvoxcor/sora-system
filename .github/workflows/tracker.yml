@@ -1,0 +1,29 @@
+name: nba-clv-tracker
+on:
+  schedule:
+    - cron: "7 * * * *"      # cada hora; el rastreador decide si hay ventana E/D abierta
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: tracker
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+      - run: python -m lab.tracker run
+      - name: Guardar datos
+        run: |
+          git config user.name "nba-clv-bot"
+          git config user.email "nba-clv-bot@users.noreply.github.com"
+          git add data/lab.db REPORT.md
+          git diff --cached --quiet || (git commit -m "datos: $(date -u +%Y-%m-%dT%H:%MZ)" && git push)
