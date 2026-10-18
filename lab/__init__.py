@@ -1,5 +1,5 @@
 """NBA CLV Lab: rastreador de CLV con criterio de falsificacion pre-registrado."""
-MODEL_VERSION = "v1.1"   # v1.1 = mismo modelo que v1.0; cambia solo el protocolo (ver FALSIFICATION.md)
+MODEL_VERSION = "v1.2"   # v1.2 = mismo modelo que v1.0; cambia solo el protocolo (ver FALSIFICATION.md)
 
 # ---- PARAMETROS CONGELADOS (ver FALSIFICATION.md). Cambiarlos reinicia el contador. ----
 RATING_K = 0.05        # ajustado en la temporada 2023-24 solamente

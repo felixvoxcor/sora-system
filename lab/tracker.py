@@ -85,6 +85,31 @@ def label_for(tte_h):
     return None
 
 
+PATH_HOURS = 28          # se registra la trayectoria de la linea desde 28 h antes del tip hasta el tip
+
+
+def log_injury_changes(con, inj, t0):
+    """Registro append-only de CAMBIOS de estado de lesiones observados (con la hora en que se vieron).
+    Si la API devolvio una lista vacia (fallo), no se registra nada para no inventar 'remociones'."""
+    if not inj:
+        return 0
+    last = {}
+    for r in con.execute("SELECT team, player_id, name, status FROM injury_log WHERE id IN "
+                         "(SELECT MAX(id) FROM injury_log GROUP BY player_id)"):
+        last[r["player_id"]] = (r["team"], r["name"], r["status"])
+    cur = {pid: (team, name, status) for team, pid, name, status in inj}
+    n = 0
+    for pid, (team, name, status) in cur.items():
+        if last.get(pid, (None, None, None))[2] != status:
+            con.execute("INSERT INTO injury_log(taken_at,team,player_id,name,status) VALUES (?,?,?,?,?)",
+                        (t0.isoformat(), team, pid, name, status)); n += 1
+    for pid, (team, name, status) in last.items():
+        if pid not in cur and status != "REMOVED":
+            con.execute("INSERT INTO injury_log(taken_at,team,player_id,name,status) VALUES (?,?,?,?,?)",
+                        (t0.isoformat(), team, pid, name, "REMOVED")); n += 1
+    return n
+
+
 def snapshot(con):
     """Registra prediccion + linea actual para partidos en la ventana E (24h), D (1-2h) o DX (respaldo).
     Archiva la respuesta cruda de ESPN (hash en la fila) y registra cada intento en capture_log."""
@@ -93,6 +118,7 @@ def snapshot(con):
     inj_payload = espn.injuries_payload()
     inj = espn.injuries(inj_payload)
     t0, n_new = now_utc(), 0
+    log_injury_changes(con, inj, t0)
     stamp = t0.strftime("%Y%m%dT%H%M")
     inj_sha = None
     for off in (0, 1, 2):
@@ -106,14 +132,22 @@ def snapshot(con):
                         (g["event_id"], g["ts"], g["home"], g["away"], t0.isoformat()))
             tte = (parse_ts(g["ts"]) - t0).total_seconds() / 3600
             lab = label_for(tte)
-            if not lab or con.execute("SELECT 1 FROM snapshots WHERE event_id=? AND label=?",
-                                      (g["event_id"], lab)).fetchone():
-                continue
-            if lab == "DX" and con.execute("SELECT 1 FROM snapshots WHERE event_id=? AND label='D'",
-                                           (g["event_id"],)).fetchone():
+            need = bool(lab) and not con.execute("SELECT 1 FROM snapshots WHERE event_id=? AND label=?",
+                                                 (g["event_id"], lab)).fetchone()
+            if need and lab == "DX" and con.execute("SELECT 1 FROM snapshots WHERE event_id=? AND label='D'",
+                                                    (g["event_id"],)).fetchone():
+                need = False
+            in_path = 0 < tte <= PATH_HOURS
+            if not need and not in_path:
                 continue
             payload = espn.odds_payload(g["event_id"])
             o = espn.parse_odds(payload, "current")
+            if o and in_path:
+                con.execute("INSERT INTO line_path(event_id,taken_at,tte_hours,provider_id,line,home_px,away_px,total)"
+                            " VALUES (?,?,?,?,?,?,?,?)", (g["event_id"], t0.isoformat(), tte, o["provider_id"],
+                                                          o["line"], o["home_px"], o["away_px"], o["total"]))
+            if not need:
+                continue
             if not o:
                 con.execute("INSERT INTO capture_log(event_id,label,attempted_at,tte_hours,status) "
                             "VALUES (?,?,?,?,?)", (g["event_id"], lab, t0.isoformat(), tte, "no_odds"))
