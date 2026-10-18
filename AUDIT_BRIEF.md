@@ -112,3 +112,20 @@ Revisión de 4 repos: sin claves expuestas. Quedan credenciales locales (`cdp_ap
 - No hay datos de Pinnacle ni de líneas intradía; The Odds API histórico es de pago y no se compró.
 - No hay un solo resultado en vivo.
 - Los 12 tests unitarios cubren el rastreador, no el estudio amplio.
+
+---
+
+## Addendum (2026-10-18): resultado de la reconstruccion v2 (estudio sin fuga)
+
+Reconstruccion: senales por dia de calendario; `abs_diff`/`pl_gap` en cuarentena; ST_ENS_OPEN limpio (sin jugadores del propio partido ni arbitros);
+nula corregida (residuo respecto a la MISMA linea que usa cada estrategia); permutacion iid + desplazamiento circular, 10.000 repeticiones cada una;
+t agrupado por dia. Detalle: `study/REPORT_STUDY_V2.md`.
+
+**Correcciones a lo afirmado en este dossier:**
+1. **R1 no explica la mejor celda.** ST_ENS_OPEN limpia (N5: 145 apuestas, ROI +14,6%) rinde casi igual que la version con fuga (LEAK_ENS_OPEN N5: +16,3%).
+   La senal vive en ratings-vs-apertura, no en los jugadores. La hipotesis de fuga que figura en §4-R1 y en el diagnostico de las 5 auditorias queda **no respaldada para esta celda**.
+   La explicacion que queda es R2/R3: la "apertura" de ESPN es un numero que el mercado corrige hacia los ratings; no esta probado que fuera apostable, y el efecto decae (2024: +29,6%; 2025: -6,1%).
+2. **El p_familia = 1,000 de v1 era un artefacto** de una nula mal construida (cierre vs apertura). En v2 la mejor celda de apertura tiene p_familia ≈ 0,23-0,30.
+3. **Resultado de v2:** 0 de 60 celdas reales con p_familia < 0,05; 1 con ROI > 0 significativo por si sola (ST_ENS_OPEN N5, p = 0,022) sin sobrevivir la correccion.
+4. **Potencia:** con ~2.600 partidos, una ventaja sembrada de +2% se detecta (criterio familiar) solo 8-51% de las veces segun nivel; +5% entre 55 y 97%. Un resultado nulo no descarta edges pequenos.
+5. Las señales de jugadores del propio partido siguen sin una version "pre-partido" (faltan reportes de lesiones con hora).
