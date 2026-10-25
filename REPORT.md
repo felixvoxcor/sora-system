@@ -4,8 +4,8 @@ Partidos con snapshot + cierre + resultado: ventana D **19** · ventana E (24 h)
 
 ## Cobertura de las ventanas (control de sesgo de seleccion)
 
-- Ventana D (1-2 h antes): observados 28 · capturados **19 (68%)** · sin cuotas 0 · perdidos por el cron 9 · respaldo DX 0
-- Ventana E (~24 h antes): observados 28 · capturados **28 (100%)** · sin cuotas 0 · perdidos por el cron 0
+- Ventana D (1-2 h antes): observados 29 · capturados **19 (66%)** · sin cuotas 0 · perdidos por el cron 9 · respaldo DX 1
+- Ventana E (~24 h antes): observados 29 · capturados **28 (97%)** · sin cuotas 0 · perdidos por el cron 0
 - Minimo exigido: 80% en cada ventana usada.
 
 ## CLV por brazo (puntos; positivo = la linea se movio hacia nuestro lado)
@@ -37,6 +37,6 @@ Decide SOLO el umbral 2 y el CLV; el ROI en papel no decide nada.
 
 ## Datos para el analisis de las 24 horas (exploratorio, no decide nada)
 
-- Puntos de trayectoria de linea: 311 en 36 partidos · cambios de lesiones registrados: 371
+- Puntos de trayectoria de linea: 315 en 39 partidos · cambios de lesiones registrados: 378
 
 _Esto es papel, no dinero. Ninguna cifra aqui autoriza apostar hasta cumplir FALSIFICATION.md._
