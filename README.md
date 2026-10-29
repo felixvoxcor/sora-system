@@ -39,3 +39,9 @@ rama a `main` para activarlo. Costo estimado: ~1 min por corrida, ≈1.300 min/m
   Jugadores nuevos o cambiados de equipo sin minutos no generan ajuste.
 - La línea viene de un solo proveedor (ESPN BET / DraftKings); el CLV se mide contra el mismo proveedor cuando es posible.
 - Es papel. Ninguna cifra autoriza apostar hasta cumplir la Fase 2 de `FALSIFICATION.md`.
+
+
+## v1.3 (2026-10-29): captura continua y apuestas ficticias
+- `python -m lab.tracker watch --minutes 335 --every 3`: sondeo continuo (ver `ENGINEERING_LOG.md`).
+- `PAPER_REPORT.md` / `PAPER_BETS.md`: apuestas ficticias con spread, moneyline y total reales. Exploratorio; no cambia el veredicto.
+- Repo privado: una pasada por corrida (cuota gratuita de minutos). Repo publico: sesion continua encadenada.

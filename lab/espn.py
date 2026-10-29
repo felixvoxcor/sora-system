@@ -90,12 +90,20 @@ def parse_odds(payload, kind, prefer_provider=None):
     if sp is None:
         return None
     op = _american((ho.get("open") or {}).get("pointSpread") or {})
+    ml_h = _american(((ho.get(kind) or {}).get("moneyLine")) or {})
+    ml_a = _american(((ao.get(kind) or {}).get("moneyLine")) or {})
+    try:
+        over_px = float(it["overOdds"]) if kind == "current" and it.get("overOdds") is not None else None
+        under_px = float(it["underOdds"]) if kind == "current" and it.get("underOdds") is not None else None
+    except Exception:
+        over_px = under_px = None
     return dict(
         provider_id=it["provider"]["id"], provider=it["provider"]["name"],
         line=-sp, open_line=(-op if op is not None else None),
         total=it.get("overUnder"),
         home_px=_american(((ho.get(kind) or {}).get("spread")) or {}),
-        away_px=_american(((ao.get(kind) or {}).get("spread")) or {}))
+        away_px=_american(((ao.get(kind) or {}).get("spread")) or {}),
+        ml_home=ml_h, ml_away=ml_a, over_px=over_px, under_px=under_px)
 
 
 def odds_payload(event_id):

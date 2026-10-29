@@ -1,23 +1,26 @@
 name: nba-clv-tracker
 on:
   schedule:
-    # Dos corridas por hora durante las horas en que ocurren las ventanas E/D (UTC), para que un retraso del
-    # cron de GitHub no pierda el partido. Mas una corrida diaria de liquidacion (resultados/cierres).
-    - cron: "7,37 13-23,0-4 * * *"
-    - cron: "7 5-12 * * *"          # una corrida por hora fuera de horario: completa la trayectoria de la linea (24 h)
-    - cron: "17 9 * * *"
+    # GitHub descarta o retrasa muchas corridas programadas (89 de ~500 en 11 dias). Estos disparos son SOLO el
+    # arranque de respaldo: en repo publico cada corrida es una sesion continua de ~5.5 h que se encadena a si misma.
+    - cron: "11 * * * *"
   workflow_dispatch: {}
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: tracker                 # nunca dos corridas a la vez (evita escrituras simultaneas sobre lab.db)
-  cancel-in-progress: false
+  cancel-in-progress: false      # la corrida en curso termina; una sola pendiente espera su turno
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 355
     steps:
+      - name: Hora de inicio
+        run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -27,18 +30,44 @@ jobs:
         id: tests
         continue-on-error: true
         run: python -m pytest -q
-      - run: python -m lab.tracker run
+      - name: Modo segun visibilidad del repositorio
+        id: mode
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          priv=$(gh api "repos/${GITHUB_REPOSITORY}" --jq .private)
+          echo "private=$priv" >> "$GITHUB_OUTPUT"
+          echo "repo privado: $priv"
+      - name: Capturar (continuo si el repo es publico; una pasada si es privado)
+        run: |
+          if [ "${{ steps.mode.outputs.private }}" = "false" ]; then
+            python -m lab.tracker watch --minutes 335 --every 3
+          else
+            python -m lab.tracker run
+          fi
       - name: Guardar datos
+        if: always()
         run: |
           git config user.name "nba-clv-bot"
           git config user.email "nba-clv-bot@users.noreply.github.com"
-          git add -A data REPORT.md          # data/ siempre existe (data/raw/.gitkeep); evita fallar si aun no hay capturas
+          git add -A data REPORT.md PAPER_REPORT.md   # data/ siempre existe (data/raw/.gitkeep)
           if ! git diff --cached --quiet; then
             git commit -m "datos: $(date -u +%Y-%m-%dT%H:%MZ)"
             for i in 1 2 3; do
               git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push && break
               sleep $((i * 5))
             done
+          fi
+      - name: Encadenar la siguiente sesion (solo repo publico)
+        if: always() && steps.mode.outputs.private == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Freno anti-bucle: si la sesion duro menos de 20 min (fallo al arrancar) NO se encadena; el cron de respaldo reintenta.
+          if [ $(( $(date +%s) - STARTED )) -ge 1200 ]; then
+            gh workflow run tracker.yml --ref "${GITHUB_REF_NAME}"
+          else
+            echo "sesion corta: no se encadena"
           fi
       - name: Fallar visiblemente si los tests fallaron
         if: steps.tests.outcome == 'failure'
