@@ -1,5 +1,5 @@
 """CLI: python -m lab.tracker {bootstrap|settle|snapshot|report|run}"""
-import json, sys
+import json, os, subprocess, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -7,10 +7,11 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from . import MODEL_VERSION, NON_NBA, espn, injury, ratings, rawstore, report, store
+from . import MODEL_VERSION, NON_NBA, espn, injury, paper, paper_report, ratings, rawstore, report, store, totals
 
 ROOT = Path(__file__).resolve().parent.parent
 HISTORY = ROOT / "data" / "history.csv"
+SCORES = ROOT / "data" / "history_scores.csv"
 ET = ZoneInfo("America/New_York")
 
 
@@ -110,14 +111,30 @@ def log_injury_changes(con, inj, t0):
     return n
 
 
+def _log_path(con, event_id, t0, tte, o):
+    """Trayectoria de la linea. Con sondeo continuo se guarda solo si algo cambio o pasaron >=10 min (se arrastra el ultimo valor)."""
+    vals = (o["provider_id"], o["line"], o["home_px"], o["away_px"], o["total"],
+            o.get("ml_home"), o.get("ml_away"), o.get("over_px"), o.get("under_px"))
+    last = con.execute("SELECT taken_at, provider_id, line, home_px, away_px, total, ml_home, ml_away, over_px, under_px "
+                       "FROM line_path WHERE event_id=? ORDER BY id DESC LIMIT 1", (event_id,)).fetchone()
+    if last is not None and tuple(last)[1:] == vals:
+        age = (t0 - parse_ts(last["taken_at"])).total_seconds() / 60
+        if age < 10:
+            return
+    con.execute("INSERT INTO line_path(event_id,taken_at,tte_hours,provider_id,line,home_px,away_px,total,"
+                "ml_home,ml_away,over_px,under_px) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (event_id, t0.isoformat(), tte) + vals)
+
+
 def snapshot(con):
     """Registra prediccion + linea actual para partidos en la ventana E (24h), D (1-2h) o DX (respaldo).
     Archiva la respuesta cruda de ESPN (hash en la fila) y registra cada intento en capture_log."""
     R = ratings.build(HISTORY, con)
+    TM = totals.build(SCORES, con) if SCORES.exists() else None
     mins = injury.avg_minutes(con)
     inj_payload = espn.injuries_payload()
     inj = espn.injuries(inj_payload)
-    t0, n_new = now_utc(), 0
+    t0, n_new, n_games = now_utc(), 0, 0
     log_injury_changes(con, inj, t0)
     stamp = t0.strftime("%Y%m%dT%H%M")
     inj_sha = None
@@ -131,6 +148,7 @@ def snapshot(con):
             con.execute("INSERT OR IGNORE INTO games_seen VALUES (?,?,?,?,?)",
                         (g["event_id"], g["ts"], g["home"], g["away"], t0.isoformat()))
             tte = (parse_ts(g["ts"]) - t0).total_seconds() / 3600
+            n_games += 1
             lab = label_for(tte)
             need = bool(lab) and not con.execute("SELECT 1 FROM snapshots WHERE event_id=? AND label=?",
                                                  (g["event_id"], lab)).fetchone()
@@ -143,9 +161,12 @@ def snapshot(con):
             payload = espn.odds_payload(g["event_id"])
             o = espn.parse_odds(payload, "current")
             if o and in_path:
-                con.execute("INSERT INTO line_path(event_id,taken_at,tte_hours,provider_id,line,home_px,away_px,total)"
-                            " VALUES (?,?,?,?,?,?,?,?)", (g["event_id"], t0.isoformat(), tte, o["provider_id"],
-                                                          o["line"], o["home_px"], o["away_px"], o["total"]))
+                _log_path(con, g["event_id"], t0, tte, o)
+            if o and paper.entry_for(tte):
+                pa_ = R.predict(g["home"], g["away"])
+                adj_, _ = injury.adjustment(g["home"], g["away"], inj, mins)
+                tt_ = TM.predict(g["home"], g["away"]) if TM else None
+                paper.record(con, g["event_id"], tte, t0, o, pa_, pa_ + adj_, tt_)
             if not need:
                 continue
             if not o:
@@ -168,6 +189,7 @@ def snapshot(con):
                         "VALUES (?,?,?,?,?)", (g["event_id"], lab, t0.isoformat(), tte, "ok"))
             n_new += cur.rowcount
             print(f"  [{lab}] {g['away']}@{g['home']} linea={o['line']:+.1f} A={pa:+.1f} B={pa+adj:+.1f}")
+    con.execute("INSERT INTO poll_log(taken_at,status,n_games) VALUES (?,?,?)", (t0.isoformat(), "ok", n_games))
     con.commit()
     print(f"snapshot: {n_new} nuevos")
 
@@ -175,7 +197,62 @@ def snapshot(con):
 def write_report(con):
     txt = report.render(con)
     (ROOT / "REPORT.md").write_text(txt, encoding="utf-8")
+    (ROOT / "PAPER_REPORT.md").write_text(paper_report.render(con), encoding="utf-8")
     print(txt)
+
+
+def git_publish(msg):
+    """Solo en GitHub Actions: guarda datos en el repositorio (con reintentos). Fuera de Actions no hace nada."""
+    if not os.environ.get("GITHUB_ACTIONS"):
+        return
+    def sh(*a):
+        return subprocess.run(a, cwd=ROOT, capture_output=True, text=True)
+    sh("git", "config", "user.name", "nba-clv-bot")
+    sh("git", "config", "user.email", "nba-clv-bot@users.noreply.github.com")
+    sh("git", "add", "-A", "data", "REPORT.md", "PAPER_REPORT.md")
+    if sh("git", "diff", "--cached", "--quiet").returncode == 0:
+        return
+    sh("git", "commit", "-m", msg)
+    ref = os.environ.get("GITHUB_REF_NAME", "main")
+    for i in (1, 2, 3):
+        if sh("git", "pull", "--rebase", "-X", "theirs", "origin", ref).returncode == 0 and \
+                sh("git", "push").returncode == 0:
+            return
+        time.sleep(i * 5)
+    print("git_publish: no se pudo subir (se reintentara en la siguiente publicacion)")
+
+
+def watch(con, minutes=335, every=3, settle_every=20, publish_every=45):
+    """Sondeo continuo: cada `every` minutos captura ventanas/entradas; cada `settle_every` liquida; cada `publish_every` sube a git.
+    Un fallo en un sondeo no detiene el bucle (queda en el log)."""
+    end = time.time() + minutes * 60
+    last_settle = last_pub = 0.0
+    while time.time() < end:
+        t_loop = time.time()
+        try:
+            snapshot(con)
+        except Exception as e:                                   # noqa: BLE001
+            print("snapshot fallo:", repr(e))
+            try:
+                con.execute("INSERT INTO poll_log(taken_at,status,n_games) VALUES (?,?,?)",
+                            (now_utc().isoformat(), f"error:{type(e).__name__}", 0)); con.commit()
+            except Exception:                                    # noqa: BLE001
+                pass
+        if time.time() - last_settle >= settle_every * 60:
+            try:
+                settle(con); write_report(con)
+            except Exception as e:                               # noqa: BLE001
+                print("settle fallo:", repr(e))
+            last_settle = time.time()
+        if time.time() - last_pub >= publish_every * 60:
+            git_publish(f"datos: {now_utc().strftime('%Y-%m-%dT%H:%MZ')}")
+            last_pub = time.time()
+        time.sleep(max(5.0, every * 60 - (time.time() - t_loop)))
+    try:
+        settle(con); write_report(con)
+    except Exception as e:                                       # noqa: BLE001
+        print("settle final fallo:", repr(e))
+    git_publish(f"datos: {now_utc().strftime('%Y-%m-%dT%H:%MZ')} (fin de sesion)")
 
 
 def main(argv):
@@ -189,6 +266,11 @@ def main(argv):
         snapshot(con)
     elif cmd == "report":
         write_report(con)
+    elif cmd == "watch":
+        a = {argv[i]: argv[i + 1] for i in range(2, len(argv) - 1, 2)}
+        if not con.execute("SELECT 1 FROM minutes LIMIT 1").fetchone():
+            bootstrap(con)
+        watch(con, minutes=float(a.get("--minutes", 335)), every=float(a.get("--every", 3)))
     elif cmd == "run":
         if not con.execute("SELECT 1 FROM minutes LIMIT 1").fetchone():
             bootstrap(con)

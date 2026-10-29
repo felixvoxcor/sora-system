@@ -268,10 +268,32 @@ def test_line_path_and_injury_log_end_to_end(con, tmp_path, monkeypatch):
     assert con.execute("SELECT status FROM injury_log").fetchall()[0][0] == "Out"
     tracker.snapshot(con)                                    # mismo estado: la lesion no se vuelve a registrar
     assert con.execute("SELECT COUNT(*) FROM injury_log").fetchone()[0] == 1
-    assert con.execute("SELECT COUNT(*) FROM line_path").fetchone()[0] == 2
+    assert con.execute("SELECT COUNT(*) FROM line_path").fetchone()[0] == 1     # sin cambios y <10 min: no se duplica
+    assert con.execute("SELECT COUNT(*) FROM poll_log").fetchone()[0] == 2
     state["inj"][0]["injuries"][0]["status"] = "Day-To-Day"   # cambio de estado: se registra
     tracker.snapshot(con)
     assert [r[0] for r in con.execute("SELECT status FROM injury_log ORDER BY id")] == ["Out", "Day-To-Day"]
     state["inj"] = []                                         # API vacia (fallo): no inventa remociones
     tracker.snapshot(con)
     assert con.execute("SELECT COUNT(*) FROM injury_log").fetchone()[0] == 2
+
+
+def test_snapshot_in_window_d_records_protocol_and_paper(con, tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from lab import tracker
+    now = datetime(2026, 10, 21, 22, 0, tzinfo=timezone.utc)
+    payload = json.load(open(FX / "odds_pre.json"))
+    game = dict(event_id="778", ts=(now + timedelta(hours=1.5)).isoformat().replace("+00:00", "Z"), season_type=2,
+                home="DET", away="NY", completed=False, home_score=0, away_score=0)
+    monkeypatch.setattr(tracker, "now_utc", lambda: now)
+    monkeypatch.setattr(tracker.espn, "scoreboard", lambda d: [game] if d == "20261021" else [])
+    monkeypatch.setattr(tracker.espn, "odds_payload", lambda e: payload)
+    monkeypatch.setattr(tracker.espn, "injuries_payload", lambda: {"injuries": []})
+    monkeypatch.setattr(rawstore, "RAW_DIR", tmp_path / "raw")
+    tracker.snapshot(con)
+    assert con.execute("SELECT label FROM snapshots").fetchall()[0][0] == "D"          # protocolo intacto
+    rows = con.execute("SELECT entry, market, model FROM paper_eval ORDER BY market, model").fetchall()
+    assert {r[0] for r in rows} == {"D"} and len(rows) == 5
+    tracker.snapshot(con)                                                             # segundo sondeo: no duplica
+    assert con.execute("SELECT COUNT(*) FROM paper_eval").fetchone()[0] == 5
+    assert con.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 1

@@ -34,6 +34,19 @@ CREATE TABLE IF NOT EXISTS line_path(
 CREATE TABLE IF NOT EXISTS injury_log(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   taken_at TEXT, team TEXT, player_id TEXT, name TEXT, status TEXT);
+CREATE TABLE IF NOT EXISTS poll_log(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  taken_at TEXT, status TEXT, n_games INTEGER);
+CREATE TABLE IF NOT EXISTS paper_eval(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT, entry TEXT, taken_at TEXT, tte_hours REAL, model TEXT, market TEXT,
+  side TEXT, line REAL, price REAL, edge REAL, p_model REAL, p_mkt REAL, ev REAL,
+  provider_id TEXT, version TEXT,
+  UNIQUE(event_id, entry, model, market));
+CREATE TRIGGER IF NOT EXISTS paper_no_update BEFORE UPDATE ON paper_eval
+  BEGIN SELECT RAISE(ABORT, 'paper_eval es append-only'); END;
+CREATE TRIGGER IF NOT EXISTS paper_no_delete BEFORE DELETE ON paper_eval
+  BEGIN SELECT RAISE(ABORT, 'paper_eval es append-only'); END;
 CREATE TRIGGER IF NOT EXISTS snapshots_no_update BEFORE UPDATE ON snapshots
   BEGIN SELECT RAISE(ABORT, 'snapshots es append-only'); END;
 CREATE TRIGGER IF NOT EXISTS snapshots_no_delete BEFORE DELETE ON snapshots
@@ -51,4 +64,8 @@ def connect(path=None):
     for c in ("raw_sha256", "inj_sha256"):          # migracion de bases creadas con v1.0
         if c not in cols:
             con.execute(f"ALTER TABLE snapshots ADD COLUMN {c} TEXT")
+    lp = {r["name"] for r in con.execute("PRAGMA table_info(line_path)")}
+    for c in ("ml_home", "ml_away", "over_px", "under_px"):   # migracion v1.3 (mercados completos)
+        if c not in lp:
+            con.execute(f"ALTER TABLE line_path ADD COLUMN {c} REAL")
     return con
