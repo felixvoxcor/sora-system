@@ -1,42 +1,42 @@
 # Reporte NBA CLV Lab (protocolo v1.2)
 
-Partidos con snapshot + cierre + resultado: ventana D **36** · ventana E (24 h) **63**
+Partidos con snapshot + cierre + resultado: ventana D **38** · ventana E (24 h) **65**
 
 ## Cobertura de las ventanas (control de sesgo de seleccion)
 
-- Ventana D (1-2 h antes): observados 77 · capturados **36 (47%)** · sin cuotas 10 · perdidos por el cron 17 · respaldo DX 14
-- Ventana E (~24 h antes): observados 77 · capturados **63 (82%)** · sin cuotas 7 · perdidos por el cron 0
+- Ventana D (1-2 h antes): observados 79 · capturados **38 (48%)** · sin cuotas 10 · perdidos por el cron 17 · respaldo DX 14
+- Ventana E (~24 h antes): observados 79 · capturados **65 (82%)** · sin cuotas 7 · perdidos por el cron 0
 - Minimo exigido: 80% en cada ventana usada.
 
 ## CLV por brazo (puntos; positivo = la linea se movio hacia nuestro lado)
 
 | Brazo | Umbral | n | CLV medio | IC 95% | t | p (1 cola) | ROI papel (informativo) |
 |---|---|---|---|---|---|---|---|
-| A (A@D) | 1 | 22 | -0.091 | [-0.280, +0.098] | -1.00 | 0.836 | -31.00% |
-| A (A@D) | 2 | 17 | -0.059 | [-0.279, +0.162] | -0.57 | 0.710 | -21.71% |
-| A (A@D) | 3 | 12 | -0.083 | [-0.267, +0.100] | -1.00 | 0.831 | -4.48% |
-| B (B@D) | 1 | 22 | +0.091 | [-0.212, +0.394] | 0.62 | 0.270 | +2.91% |
-| B (B@D) | 2 | 17 | -0.059 | [-0.184, +0.066] | -1.00 | 0.834 | -10.48% |
-| B (B@D) | 3 | 14 | +nan | [+nan, +nan] | nan | nan | +8.71% |
-| C (A@E) | 1 | 47 | +0.170 | [-0.392, +0.732] | 0.61 | 0.273 | -43.33% |
-| C (A@E) | 2 | 32 | +0.250 | [-0.532, +1.032] | 0.65 | 0.260 | -28.71% |
-| C (A@E) | 3 | 24 | +0.500 | [-0.407, +1.407] | 1.14 | 0.133 | -12.74% |
+| A (A@D) | 1 | 24 | -0.042 | [-0.238, +0.154] | -0.44 | 0.668 | -28.73% |
+| A (A@D) | 2 | 19 | +0.000 | [-0.227, +0.227] | 0.00 | 0.500 | -19.81% |
+| A (A@D) | 3 | 14 | +0.000 | [-0.226, +0.226] | 0.00 | 0.500 | -4.37% |
+| B (B@D) | 1 | 24 | +0.125 | [-0.162, +0.412] | 0.90 | 0.188 | +10.31% |
+| B (B@D) | 2 | 19 | +0.000 | [-0.161, +0.161] | 0.00 | 0.500 | +0.29% |
+| B (B@D) | 3 | 15 | +0.067 | [-0.076, +0.210] | 1.00 | 0.167 | +14.30% |
+| C (A@E) | 1 | 49 | +0.143 | [-0.398, +0.683] | 0.53 | 0.299 | -41.75% |
+| C (A@E) | 2 | 34 | +0.206 | [-0.532, +0.944] | 0.57 | 0.287 | -27.29% |
+| C (A@E) | 3 | 25 | +0.440 | [-0.436, +1.316] | 1.04 | 0.155 | -16.23% |
 
 Decide SOLO el umbral 2 y el CLV; el ROI en papel no decide nada.
 
 ## Veredicto pre-registrado (umbral primario = 2 pts, alfa por brazo = 0.0167)
 
-- Brazo A (A@D): **EN CURSO (17/500)** · SD observada 0.43 -> efecto minimo detectable con n=500: 0.06 pts
-- Brazo B (B@D): **EN CURSO (17/500)** · SD observada 0.24 -> efecto minimo detectable con n=500: 0.03 pts
-- Brazo C (A@E): **EN CURSO (32/500)** · SD observada 2.17 -> efecto minimo detectable con n=500: 0.29 pts
+- Brazo A (A@D): **EN CURSO (19/500)** · SD observada 0.47 -> efecto minimo detectable con n=500: 0.06 pts
+- Brazo B (B@D): **EN CURSO (19/500)** · SD observada 0.33 -> efecto minimo detectable con n=500: 0.04 pts
+- Brazo C (A@E): **EN CURSO (34/500)** · SD observada 2.11 -> efecto minimo detectable con n=500: 0.28 pts
 
 ## Prueba de liderazgo en la ventana D (exploratoria)
 
-- Movimiento snapshot->cierre ~ (modelo A - linea): pendiente -0.005, t = -0.14
-- Movimiento snapshot->cierre ~ ajuste de lesiones: pendiente 0.041, t = 0.78
+- Movimiento snapshot->cierre ~ (modelo A - linea): pendiente 0.004, t = 0.12
+- Movimiento snapshot->cierre ~ ajuste de lesiones: pendiente 0.050, t = 1.12
 
 ## Datos para el analisis de las 24 horas (exploratorio, no decide nada)
 
-- Puntos de trayectoria de linea: 1874 en 87 partidos · cambios de lesiones registrados: 639
+- Puntos de trayectoria de linea: 1896 en 87 partidos · cambios de lesiones registrados: 639
 
 _Esto es papel, no dinero. Ninguna cifra aqui autoriza apostar hasta cumplir FALSIFICATION.md._
