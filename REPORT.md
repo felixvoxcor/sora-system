@@ -1,11 +1,11 @@
 # Reporte NBA CLV Lab (protocolo v1.2)
 
-Partidos con snapshot + cierre + resultado: ventana D **50** · ventana E (24 h) **73**
+Partidos con snapshot + cierre + resultado: ventana D **51** · ventana E (24 h) **74**
 
 ## Cobertura de las ventanas (control de sesgo de seleccion)
 
-- Ventana D (1-2 h antes): observados 91 · capturados **50 (55%)** · sin cuotas 10 · perdidos por el cron 17 · respaldo DX 14
-- Ventana E (~24 h antes): observados 91 · capturados **73 (80%)** · sin cuotas 11 · perdidos por el cron 0
+- Ventana D (1-2 h antes): observados 92 · capturados **51 (55%)** · sin cuotas 10 · perdidos por el cron 17 · respaldo DX 14
+- Ventana E (~24 h antes): observados 92 · capturados **74 (80%)** · sin cuotas 11 · perdidos por el cron 0
 - Minimo exigido: 80% en cada ventana usada.
 
 ## CLV por brazo (puntos; positivo = la linea se movio hacia nuestro lado)
@@ -18,7 +18,7 @@ Partidos con snapshot + cierre + resultado: ventana D **50** · ventana E (24 h)
 | B (B@D) | 1 | 36 | +0.083 | [-0.151, +0.317] | 0.72 | 0.237 | +0.15% |
 | B (B@D) | 2 | 26 | +0.077 | [-0.118, +0.272] | 0.81 | 0.212 | -11.96% |
 | B (B@D) | 3 | 20 | +0.150 | [-0.021, +0.321] | 1.83 | 0.041 | -4.73% |
-| C (A@E) | 1 | 54 | +0.148 | [-0.362, +0.658] | 0.58 | 0.281 | -39.99% |
+| C (A@E) | 1 | 55 | +0.164 | [-0.337, +0.665] | 0.65 | 0.258 | -41.08% |
 | C (A@E) | 2 | 39 | +0.205 | [-0.465, +0.875] | 0.62 | 0.270 | -26.71% |
 | C (A@E) | 3 | 29 | +0.483 | [-0.296, +1.261] | 1.27 | 0.107 | -21.05% |
 
@@ -32,11 +32,11 @@ Decide SOLO el umbral 2 y el CLV; el ROI en papel no decide nada.
 
 ## Prueba de liderazgo en la ventana D (exploratoria)
 
-- Movimiento snapshot->cierre ~ (modelo A - linea): pendiente 0.024, t = 0.89
-- Movimiento snapshot->cierre ~ ajuste de lesiones: pendiente 0.005, t = 0.13
+- Movimiento snapshot->cierre ~ (modelo A - linea): pendiente 0.024, t = 0.88
+- Movimiento snapshot->cierre ~ ajuste de lesiones: pendiente 0.006, t = 0.16
 
 ## Datos para el analisis de las 24 horas (exploratorio, no decide nada)
 
-- Puntos de trayectoria de linea: 3382 en 105 partidos · cambios de lesiones registrados: 723
+- Puntos de trayectoria de linea: 3433 en 107 partidos · cambios de lesiones registrados: 726
 
 _Esto es papel, no dinero. Ninguna cifra aqui autoriza apostar hasta cumplir FALSIFICATION.md._
