@@ -191,7 +191,7 @@ def snapshot(con):
             print(f"  [{lab}] {g['away']}@{g['home']} linea={o['line']:+.1f} A={pa:+.1f} B={pa+adj:+.1f}")
     con.execute("INSERT INTO poll_log(taken_at,status,n_games) VALUES (?,?,?)", (t0.isoformat(), "ok", n_games))
     con.commit()
-    print(f"snapshot: {n_new} nuevos")
+    print(f"snapshot: {n_new} nuevos", flush=True)
 
 
 def write_report(con):
@@ -204,22 +204,36 @@ def write_report(con):
 def git_publish(msg):
     """Solo en GitHub Actions: guarda datos en el repositorio (con reintentos). Fuera de Actions no hace nada."""
     if not os.environ.get("GITHUB_ACTIONS"):
-        return
+        return False
     def sh(*a):
         return subprocess.run(a, cwd=ROOT, capture_output=True, text=True)
     sh("git", "config", "user.name", "nba-clv-bot")
     sh("git", "config", "user.email", "nba-clv-bot@users.noreply.github.com")
     sh("git", "add", "-A", "data", "REPORT.md", "PAPER_REPORT.md")
     if sh("git", "diff", "--cached", "--quiet").returncode == 0:
-        return
+        return True
     sh("git", "commit", "-m", msg)
     ref = os.environ.get("GITHUB_REF_NAME", "main")
     for i in (1, 2, 3):
         if sh("git", "pull", "--rebase", "-X", "theirs", "origin", ref).returncode == 0 and \
                 sh("git", "push").returncode == 0:
-            return
+            return True
         time.sleep(i * 5)
     print("git_publish: no se pudo subir (se reintentara en la siguiente publicacion)")
+    return True
+
+
+def _reopen(con):
+    """Reabre la conexion al mismo archivo (git puede reemplazar lab.db durante un pull/rebase y dejar la conexion apuntando a un archivo viejo)."""
+    try:
+        path = next(r[2] for r in con.execute("PRAGMA database_list") if r[1] == "main")
+    except Exception:                                            # noqa: BLE001
+        path = None
+    try:
+        con.close()
+    except Exception:                                            # noqa: BLE001
+        pass
+    return store.connect(path or None)
 
 
 def watch(con, minutes=335, every=3, settle_every=20, publish_every=45):
@@ -232,7 +246,9 @@ def watch(con, minutes=335, every=3, settle_every=20, publish_every=45):
         try:
             snapshot(con)
         except Exception as e:                                   # noqa: BLE001
-            print("snapshot fallo:", repr(e))
+            print("snapshot fallo:", repr(e), flush=True)
+            if "readonly" in str(e) or "disk I/O" in str(e) or "no such table" in str(e):
+                con = _reopen(con)                               # autocuracion: el archivo fue reemplazado por git
             try:
                 con.execute("INSERT INTO poll_log(taken_at,status,n_games) VALUES (?,?,?)",
                             (now_utc().isoformat(), f"error:{type(e).__name__}", 0)); con.commit()
@@ -245,7 +261,8 @@ def watch(con, minutes=335, every=3, settle_every=20, publish_every=45):
                 print("settle fallo:", repr(e))
             last_settle = time.time()
         if time.time() - last_pub >= publish_every * 60:
-            git_publish(f"datos: {now_utc().strftime('%Y-%m-%dT%H:%MZ')}")
+            if git_publish(f"datos: {now_utc().strftime('%Y-%m-%dT%H:%MZ')}"):
+                con = _reopen(con)                               # tras el pull/rebase el archivo puede ser otro
             last_pub = time.time()
         time.sleep(max(5.0, every * 60 - (time.time() - t_loop)))
     try:

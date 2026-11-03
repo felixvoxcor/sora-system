@@ -138,3 +138,32 @@ def test_watch_survives_snapshot_error(con, monkeypatch):
     tracker.watch(con, minutes=0.002, every=0.001)
     assert calls["n"] >= 1
     assert con.execute("SELECT COUNT(*) FROM poll_log WHERE status LIKE 'error:%'").fetchone()[0] >= 1
+
+
+def test_reopen_after_file_replaced(tmp_path):
+    import os, shutil
+    p = tmp_path / "x.db"
+    con = store.connect(p)
+    con.execute("INSERT INTO poll_log(taken_at,status,n_games) VALUES ('a','ok',1)"); con.commit()
+    shutil.copy(p, tmp_path / "new.db")
+    os.replace(tmp_path / "new.db", p)                       # como hace git al reescribir lab.db en un rebase
+    con2 = tracker._reopen(con)
+    con2.execute("INSERT INTO poll_log(taken_at,status,n_games) VALUES ('b','ok',1)"); con2.commit()
+    assert store.connect(p).execute("SELECT COUNT(*) FROM poll_log").fetchone()[0] == 2
+
+
+def test_watch_reopens_on_readonly(con, monkeypatch):
+    seen = {"reopen": 0, "n": 0}
+    def boom(c):
+        seen["n"] += 1
+        raise RuntimeError("attempt to write a readonly database")
+    def fake_reopen(c):
+        seen["reopen"] += 1
+        return c
+    monkeypatch.setattr(tracker, "snapshot", boom)
+    monkeypatch.setattr(tracker, "_reopen", fake_reopen)
+    monkeypatch.setattr(tracker, "settle", lambda c: None)
+    monkeypatch.setattr(tracker, "write_report", lambda c: None)
+    monkeypatch.setattr(tracker.time, "sleep", lambda s: None)
+    tracker.watch(con, minutes=0.002, every=0.001)
+    assert seen["reopen"] >= 1
