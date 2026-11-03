@@ -20,7 +20,8 @@ jobs:
         run: echo "STARTED=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ github.ref_name }}   # la PUNTA actual de la rama, no el commit del momento del disparo: una corrida en cola
+          fetch-depth: 0                # arrancaba con una lab.db vieja y pisaba datos mas nuevos (hueco del 30-oct)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
