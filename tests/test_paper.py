@@ -132,6 +132,7 @@ def test_watch_survives_snapshot_error(con, monkeypatch):
         calls["n"] += 1
         raise RuntimeError("falla de red")
     monkeypatch.setattr(tracker, "snapshot", boom)
+    monkeypatch.setattr(tracker, "git_publish", lambda m: False)     # las pruebas nunca tocan git (en Actions GITHUB_ACTIONS=true)
     monkeypatch.setattr(tracker, "settle", lambda c: None)
     monkeypatch.setattr(tracker, "write_report", lambda c: None)
     monkeypatch.setattr(tracker.time, "sleep", lambda s: None)
@@ -162,6 +163,7 @@ def test_watch_reopens_on_readonly(con, monkeypatch):
         return c
     monkeypatch.setattr(tracker, "snapshot", boom)
     monkeypatch.setattr(tracker, "_reopen", fake_reopen)
+    monkeypatch.setattr(tracker, "git_publish", lambda m: False)
     monkeypatch.setattr(tracker, "settle", lambda c: None)
     monkeypatch.setattr(tracker, "write_report", lambda c: None)
     monkeypatch.setattr(tracker.time, "sleep", lambda s: None)
