@@ -1,24 +1,24 @@
 # Reporte NBA CLV Lab (protocolo v1.2)
 
-Partidos con snapshot + cierre + resultado: ventana D **114** · ventana E (24 h) **136**
+Partidos con snapshot + cierre + resultado: ventana D **115** · ventana E (24 h) **137**
 
 ## Cobertura de las ventanas (control de sesgo de seleccion)
 
-- Ventana D (1-2 h antes): observados 155 · capturados **114 (74%)** · sin cuotas 10 · perdidos por el cron 17 · respaldo DX 14
-- Ventana E (~24 h antes): observados 155 · capturados **136 (88%)** · sin cuotas 12 · perdidos por el cron 0
+- Ventana D (1-2 h antes): observados 156 · capturados **115 (74%)** · sin cuotas 10 · perdidos por el cron 17 · respaldo DX 14
+- Ventana E (~24 h antes): observados 156 · capturados **137 (88%)** · sin cuotas 12 · perdidos por el cron 0
 - Minimo exigido: 80% en cada ventana usada.
 
 ## CLV por brazo (puntos; positivo = la linea se movio hacia nuestro lado)
 
 | Brazo | Umbral | n | CLV medio | IC 95% | t | p (1 cola) | ROI papel (informativo) |
 |---|---|---|---|---|---|---|---|
-| A (A@D) | 1 | 82 | -0.073 | [-0.234, +0.088] | -0.90 | 0.816 | -7.03% |
+| A (A@D) | 1 | 83 | -0.072 | [-0.231, +0.087] | -0.90 | 0.816 | -8.15% |
 | A (A@D) | 2 | 62 | -0.145 | [-0.345, +0.054] | -1.45 | 0.924 | -4.69% |
 | A (A@D) | 3 | 43 | -0.140 | [-0.405, +0.126] | -1.06 | 0.853 | -2.60% |
 | B (B@D) | 1 | 86 | -0.128 | [-0.288, +0.033] | -1.59 | 0.942 | -6.83% |
 | B (B@D) | 2 | 59 | -0.068 | [-0.212, +0.076] | -0.94 | 0.825 | -6.16% |
 | B (B@D) | 3 | 45 | -0.022 | [-0.185, +0.141] | -0.27 | 0.608 | -10.82% |
-| C (A@E) | 1 | 103 | +0.107 | [-0.272, +0.486] | 0.56 | 0.289 | -31.39% |
+| C (A@E) | 1 | 104 | +0.135 | [-0.245, +0.514] | 0.70 | 0.242 | -30.28% |
 | C (A@E) | 2 | 74 | -0.041 | [-0.497, +0.416] | -0.18 | 0.570 | -17.42% |
 | C (A@E) | 3 | 54 | +0.000 | [-0.559, +0.559] | 0.00 | 0.500 | -8.11% |
 
@@ -32,11 +32,11 @@ Decide SOLO el umbral 2 y el CLV; el ROI en papel no decide nada.
 
 ## Prueba de liderazgo en la ventana D (exploratoria)
 
-- Movimiento snapshot->cierre ~ (modelo A - linea): pendiente -0.014, t = -0.65
+- Movimiento snapshot->cierre ~ (modelo A - linea): pendiente -0.014, t = -0.66
 - Movimiento snapshot->cierre ~ ajuste de lesiones: pendiente 0.004, t = 0.19
 
 ## Datos para el analisis de las 24 horas (exploratorio, no decide nada)
 
-- Puntos de trayectoria de linea: 12366 en 166 partidos · cambios de lesiones registrados: 1161
+- Puntos de trayectoria de linea: 12405 en 167 partidos · cambios de lesiones registrados: 1161
 
 _Esto es papel, no dinero. Ninguna cifra aqui autoriza apostar hasta cumplir FALSIFICATION.md._
