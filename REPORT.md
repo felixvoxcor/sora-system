@@ -1,11 +1,11 @@
 # Reporte NBA CLV Lab (protocolo v1.2)
 
-Partidos con snapshot + cierre + resultado: ventana D **147** · ventana E (24 h) **161**
+Partidos con snapshot + cierre + resultado: ventana D **148** · ventana E (24 h) **161**
 
 ## Cobertura de las ventanas (control de sesgo de seleccion)
 
-- Ventana D (1-2 h antes): observados 188 · capturados **147 (78%)** · sin cuotas 10 · perdidos por el cron 17 · respaldo DX 14
-- Ventana E (~24 h antes): observados 188 · capturados **161 (86%)** · sin cuotas 20 · perdidos por el cron 0
+- Ventana D (1-2 h antes): observados 189 · capturados **148 (78%)** · sin cuotas 10 · perdidos por el cron 17 · respaldo DX 14
+- Ventana E (~24 h antes): observados 189 · capturados **161 (85%)** · sin cuotas 21 · perdidos por el cron 0
 - Minimo exigido: 80% en cada ventana usada.
 
 ## CLV por brazo (puntos; positivo = la linea se movio hacia nuestro lado)
@@ -37,6 +37,6 @@ Decide SOLO el umbral 2 y el CLV; el ROI en papel no decide nada.
 
 ## Datos para el analisis de las 24 horas (exploratorio, no decide nada)
 
-- Puntos de trayectoria de linea: 16687 en 197 partidos · cambios de lesiones registrados: 1403
+- Puntos de trayectoria de linea: 16716 en 197 partidos · cambios de lesiones registrados: 1404
 
 _Esto es papel, no dinero. Ninguna cifra aqui autoriza apostar hasta cumplir FALSIFICATION.md._
