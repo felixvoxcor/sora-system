@@ -37,6 +37,6 @@ Decide SOLO el umbral 2 y el CLV; el ROI en papel no decide nada.
 
 ## Datos para el analisis de las 24 horas (exploratorio, no decide nada)
 
-- Puntos de trayectoria de linea: 22425 en 246 partidos · cambios de lesiones registrados: 1731
+- Puntos de trayectoria de linea: 22427 en 247 partidos · cambios de lesiones registrados: 1731
 
 _Esto es papel, no dinero. Ninguna cifra aqui autoriza apostar hasta cumplir FALSIFICATION.md._
